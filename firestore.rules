@@ -1,0 +1,86 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===== Helper: check if user is admin via Firestore user doc =====
+    function isAdmin() {
+      return request.auth != null &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.admin == true;
+    }
+
+    // ===== USERS =====
+    match /users/{uid} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Friends subcollection
+    match /users/{uid}/friends/{friendUid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Meta subcollection
+    match /users/{userId}/meta/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ===== REPORTS =====
+    match /reports/{reportId} {
+      // any signed-in student can send a report
+      allow create: if request.auth != null;
+
+      // ONLY admins can read reports
+      allow read: if isAdmin();
+
+      // no updates or deletes
+      allow update, delete: if false;
+    }
+
+    // ===== ALERTS =====
+    match /alerts/{alertId} {
+      // only admins can create alerts
+      allow create, update, delete: if isAdmin();
+
+      // students can read alerts for safety feed
+      allow read: if request.auth != null;
+    }
+
+    // ===== WALKS =====
+    match /walks/{walkId} {
+      allow create: if request.auth != null
+                    && request.auth.uid == request.resource.data.userId;
+      
+      allow read, update: if request.auth != null
+                          && request.auth.uid == resource.data.userId;
+
+      allow delete: if request.auth != null
+                    && request.auth.uid == resource.data.userId;
+    }
+
+    // ===== LOCATION POINTS =====
+    match /locationPoints/{pointId} {
+      allow create, read, update, delete: if request.auth != null;
+    }
+
+    // ===== EMERGENCIES =====
+    match /emergencies/{emergencyId} {
+      allow create: if request.auth != null
+                    && request.auth.uid == request.resource.data.from;
+      
+      allow read: if request.auth != null &&
+        (
+          request.auth.uid == resource.data.from ||
+          request.auth.uid == resource.data.to ||
+          isAdmin()
+        );
+
+      allow update, delete: if false;
+    }
+
+    // ===== FALLBACK =====
+    match /{document=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}
